@@ -142,3 +142,28 @@ describe("send_direct_message", () => {
     expect(out).toContain("bob");
   });
 });
+
+describe("reply_to_thread", () => {
+  it("replies to a thread with root_id and confirms the destination", async () => {
+    const c = ctx({
+      resolver: {
+        resolveChannel: vi.fn(async () => ({ id: "c1", name: "team-be", display_name: "Team BE", type: "O", team_id: "t1" })),
+      },
+      client: { post: vi.fn(async () => ({ id: "reply1" })) },
+    });
+    const tool = replyToThreadTool(c);
+    const out = await tool.handler({ channel: "team-be", thread_id: "root123", message: "thanks" });
+
+    expect(c.client.post).toHaveBeenCalledWith("/posts", { channel_id: "c1", message: "thanks", root_id: "root123" });
+    expect(out).toContain("root123");
+    expect(out).toContain("team-be");
+    expect(out).toContain("reply1");
+  });
+
+  it("rejects an empty reply without calling the API", async () => {
+    const c = ctx({ client: { post: vi.fn() } });
+    const tool = replyToThreadTool(c);
+    await expect(tool.handler({ channel: "team-be", thread_id: "root123", message: "  " })).rejects.toThrow(/rỗng/);
+    expect(c.client.post).not.toHaveBeenCalled();
+  });
+});
