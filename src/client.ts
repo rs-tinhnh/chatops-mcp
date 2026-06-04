@@ -6,6 +6,7 @@ export interface ClientConfig {
 
 export class MattermostClient {
   private token: string | null = null;
+  private loginPromise: Promise<void> | null = null;
   userId: string | null = null;
   private readonly api: string;
 
@@ -28,21 +29,32 @@ export class MattermostClient {
     if (!this.token) throw new Error("đăng nhập thất bại: không nhận được session token");
   }
 
+  private async ensureLogin(force = false): Promise<void> {
+    if (force) this.token = null;
+    if (this.token) return;
+    if (!this.loginPromise) {
+      this.loginPromise = this.login().finally(() => {
+        this.loginPromise = null;
+      });
+    }
+    await this.loginPromise;
+  }
+
   private async raw(path: string, init: RequestInit): Promise<Response> {
-    if (!this.token) await this.login();
+    await this.ensureLogin();
     const doFetch = () =>
       fetch(`${this.api}${path}`, {
         ...init,
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${this.token}`,
           ...(init.headers ?? {}),
+          Authorization: `Bearer ${this.token}`,
         },
       });
 
     let r = await doFetch();
     if (r.status === 401) {
-      await this.login(); // re-login exactly once
+      await this.ensureLogin(true); // re-login exactly once
       r = await doFetch();
     }
     return r;
