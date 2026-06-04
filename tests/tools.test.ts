@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { readChannelTool, listChannelsTool, searchMessagesTool } from "../src/tools/read.js";
 import { sendMessageTool, replyToThreadTool, sendDirectMessageTool } from "../src/tools/send.js";
+import { findUserTool } from "../src/tools/users.js";
 
 function ctx(overrides: any = {}) {
   const client = { get: vi.fn(), post: vi.fn(), userId: "me1", ...overrides.client };
@@ -165,5 +166,29 @@ describe("reply_to_thread", () => {
     const tool = replyToThreadTool(c);
     await expect(tool.handler({ channel: "team-be", thread_id: "root123", message: "  " })).rejects.toThrow(/rỗng/);
     expect(c.client.post).not.toHaveBeenCalled();
+  });
+});
+
+describe("find_user", () => {
+  it("searches users and returns username + full name", async () => {
+    const c = ctx({
+      client: {
+        post: vi.fn(async () => [
+          { id: "u2", username: "bob", first_name: "Bob", last_name: "Le" },
+        ]),
+      },
+    });
+    const tool = findUserTool(c);
+    const out = await tool.handler({ query: "bob" });
+    expect(c.client.post).toHaveBeenCalledWith("/users/search", { term: "bob" });
+    expect(out).toContain("bob");
+    expect(out).toContain("Bob Le");
+  });
+
+  it("reports when no user matches", async () => {
+    const c = ctx({ client: { post: vi.fn(async () => []) } });
+    const tool = findUserTool(c);
+    const out = await tool.handler({ query: "nobody" });
+    expect(out).toContain("Không thấy");
   });
 });
