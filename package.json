@@ -1,0 +1,24 @@
+{
+  "name": "chatops-mcp",
+  "version": "0.1.0",
+  "description": "MCP server to read and reply to Mattermost messages",
+  "type": "module",
+  "bin": { "chatops-mcp": "dist/bin.js" },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/bin.ts",
+    "test": "vitest run",
+    "smoke": "tsx scripts/smoke.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.4.0",
+    "vitest": "^2.0.0"
+  }
+}
