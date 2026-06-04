@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { readChannelTool, listChannelsTool } from "../src/tools/read.js";
+import { readChannelTool, listChannelsTool, searchMessagesTool } from "../src/tools/read.js";
 
 function ctx(overrides: any = {}) {
   const client = { get: vi.fn(), post: vi.fn(), userId: "me1", ...overrides.client };
@@ -54,5 +54,45 @@ describe("list_channels", () => {
     expect(out).toContain("public");
     expect(out).toContain("secret");
     expect(out).toContain("private");
+  });
+});
+
+describe("search_messages", () => {
+  it("searches each team, merges results, applies the limit, and renders usernames", async () => {
+    const c = ctx({
+      resolver: {
+        getTeams: vi.fn(async () => [{ id: "t1", name: "t1" }, { id: "t2", name: "t2" }]),
+        usernamesByIds: vi.fn(async () => ({ u1: "alice", u2: "bob" })),
+      },
+      client: {
+        post: vi.fn(async (path: string) => {
+          if (path === "/teams/t1/posts/search") {
+            return { order: ["p1"], posts: { p1: { id: "p1", user_id: "u1", message: "from t1", create_at: 1700000000000, root_id: "" } } };
+          }
+          return { order: ["p2"], posts: { p2: { id: "p2", user_id: "u2", message: "from t2", create_at: 1700000100000, root_id: "" } } };
+        }),
+      },
+    });
+    const tool = searchMessagesTool(c);
+    const out = await tool.handler({ query: "hello", limit: 5 });
+
+    // searched both teams with the correct payload
+    expect(c.client.post).toHaveBeenCalledWith("/teams/t1/posts/search", { terms: "hello", is_or_search: false });
+    expect(c.client.post).toHaveBeenCalledWith("/teams/t2/posts/search", { terms: "hello", is_or_search: false });
+    // merged results from both teams are rendered
+    expect(out).toContain("from t1");
+    expect(out).toContain("from t2");
+    expect(out).toContain("alice");
+    expect(out).toContain("bob");
+  });
+
+  it("reports when nothing is found", async () => {
+    const c = ctx({
+      resolver: { getTeams: vi.fn(async () => [{ id: "t1", name: "t1" }]) },
+      client: { post: vi.fn(async () => ({ order: [], posts: {} })) },
+    });
+    const tool = searchMessagesTool(c);
+    const out = await tool.handler({ query: "nope" });
+    expect(out).toContain("(không tìm thấy tin nhắn nào)");
   });
 });
