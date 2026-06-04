@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { readChannelTool, listChannelsTool, searchMessagesTool } from "../src/tools/read.js";
+import { sendMessageTool, replyToThreadTool, sendDirectMessageTool } from "../src/tools/send.js";
 
 function ctx(overrides: any = {}) {
   const client = { get: vi.fn(), post: vi.fn(), userId: "me1", ...overrides.client };
@@ -94,5 +95,50 @@ describe("search_messages", () => {
     const tool = searchMessagesTool(c);
     const out = await tool.handler({ query: "nope" });
     expect(out).toContain("(không tìm thấy tin nhắn nào)");
+  });
+});
+
+describe("send_message", () => {
+  it("rejects empty messages without calling the API", async () => {
+    const c = ctx({ client: { post: vi.fn() } });
+    const tool = sendMessageTool(c);
+    await expect(tool.handler({ channel: "team-be", message: "   " })).rejects.toThrow(/rỗng/);
+    expect(c.client.post).not.toHaveBeenCalled();
+  });
+
+  it("resolves channel, posts, and confirms the destination", async () => {
+    const c = ctx({
+      resolver: {
+        resolveChannel: vi.fn(async () => ({ id: "c1", name: "team-be", display_name: "Team BE", type: "O", team_id: "t1" })),
+      },
+      client: { post: vi.fn(async () => ({ id: "newpost1" })) },
+    });
+    const tool = sendMessageTool(c);
+    const out = await tool.handler({ channel: "team-be", message: "hello" });
+
+    expect(c.client.post).toHaveBeenCalledWith("/posts", { channel_id: "c1", message: "hello" });
+    expect(out).toContain("team-be");
+    expect(out).toContain("newpost1");
+  });
+});
+
+describe("send_direct_message", () => {
+  it("finds user, opens DM channel, posts, and confirms recipient", async () => {
+    const c = ctx({
+      resolver: { resolveUser: vi.fn(async () => ({ id: "u2", username: "bob" })) },
+      client: {
+        userId: "me1",
+        post: vi.fn(async (path: string) => {
+          if (path === "/channels/direct") return { id: "dm1" };
+          return { id: "newpost2" };
+        }),
+      },
+    });
+    const tool = sendDirectMessageTool(c);
+    const out = await tool.handler({ username: "bob", message: "hi bob" });
+
+    expect(c.client.post).toHaveBeenCalledWith("/channels/direct", ["me1", "u2"]);
+    expect(c.client.post).toHaveBeenCalledWith("/posts", { channel_id: "dm1", message: "hi bob" });
+    expect(out).toContain("bob");
   });
 });
