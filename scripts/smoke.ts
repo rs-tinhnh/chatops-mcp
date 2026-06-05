@@ -1,4 +1,5 @@
 // scripts/smoke.ts — manual end-to-end check against the real server. NOT run in CI.
+// Opens a real browser for SSO login (set CHATOPS_HEADFUL=1 to watch it).
 // Usage: MATTERMOST_URL=... MATTERMOST_USERNAME=... MATTERMOST_PASSWORD=... CHANNEL=town-square npm run smoke
 import { MattermostClient } from "../src/client.js";
 import { Resolver } from "../src/resolver.js";
