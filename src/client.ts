@@ -1,7 +1,16 @@
+import { ssoLogin } from "./sso-login.js";
+import { defaultSessionPath, loadSession, saveSession } from "./session-store.js";
+
 export interface ClientConfig {
   baseUrl: string;
   username: string;
   password: string;
+}
+
+export interface ClientDeps {
+  mintToken?: (cfg: ClientConfig) => Promise<string>;
+  loadToken?: () => string | null;
+  saveToken?: (token: string) => void;
 }
 
 export class MattermostClient {
@@ -9,31 +18,50 @@ export class MattermostClient {
   private loginPromise: Promise<void> | null = null;
   userId: string | null = null;
   private readonly api: string;
+  private readonly mintToken: (cfg: ClientConfig) => Promise<string>;
+  private readonly loadToken: () => string | null;
+  private readonly saveToken: (token: string) => void;
 
-  constructor(private cfg: ClientConfig) {
+  constructor(private cfg: ClientConfig, deps: ClientDeps = {}) {
     this.api = cfg.baseUrl.replace(/\/$/, "") + "/api/v4";
+    this.mintToken = deps.mintToken ?? ssoLogin;
+    this.loadToken = deps.loadToken ?? (() => loadSession(defaultSessionPath()));
+    this.saveToken = deps.saveToken ?? ((t) => saveSession(defaultSessionPath(), t));
   }
 
-  private async login(): Promise<void> {
-    const r = await fetch(`${this.api}/users/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ login_id: this.cfg.username, password: this.cfg.password }),
+  // Returns true and sets userId if the token is accepted by the server.
+  private async verify(token: string): Promise<boolean> {
+    const r = await fetch(`${this.api}/users/me`, {
+      headers: { Authorization: `Bearer ${token}` },
     });
-    if (!r.ok) {
-      throw new Error("đăng nhập thất bại, kiểm tra credential (MATTERMOST_USERNAME/PASSWORD)");
-    }
-    this.token = r.headers.get("Token");
+    if (!r.ok) return false;
     const me = (await r.json()) as { id: string };
     this.userId = me.id;
-    if (!this.token) throw new Error("đăng nhập thất bại: không nhận được session token");
+    return true;
+  }
+
+  private async login(force: boolean): Promise<void> {
+    if (!force) {
+      const stored = this.loadToken();
+      if (stored && (await this.verify(stored))) {
+        this.token = stored;
+        return;
+      }
+    }
+    const token = await this.mintToken(this.cfg);
+    if (!token) throw new Error("đăng nhập thất bại: không lấy được session token");
+    if (!(await this.verify(token))) {
+      throw new Error("đăng nhập thất bại: token không hợp lệ sau khi đăng nhập SSO");
+    }
+    this.saveToken(token);
+    this.token = token;
   }
 
   private async ensureLogin(force = false): Promise<void> {
     if (force) this.token = null;
     if (this.token) return;
     if (!this.loginPromise) {
-      this.loginPromise = this.login().finally(() => {
+      this.loginPromise = this.login(force).finally(() => {
         this.loginPromise = null;
       });
     }

@@ -1,60 +1,84 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { MattermostClient } from "../src/client.js";
 
-function res(body: unknown, init: { status?: number; headers?: Record<string, string> } = {}) {
+function res(body: unknown, init: { status?: number } = {}) {
   return new Response(JSON.stringify(body), {
     status: init.status ?? 200,
-    headers: { "Content-Type": "application/json", ...(init.headers ?? {}) },
+    headers: { "Content-Type": "application/json" },
   });
 }
+
+const cfg = { baseUrl: "https://x", username: "u", password: "p" };
 
 describe("MattermostClient", () => {
   beforeEach(() => vi.restoreAllMocks());
 
-  it("logs in on first request and reuses the session token", async () => {
+  it("reuses a valid stored token without minting", async () => {
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(res({ id: "me1" }, { headers: { Token: "tok-1" } })) // login
-      .mockResolvedValueOnce(res([{ id: "t1", name: "team" }]));                  // GET teams
-
+      .mockResolvedValueOnce(res({ id: "me1" }))          // GET /users/me (verify)
+      .mockResolvedValueOnce(res([{ id: "t1" }]));        // GET /users/me/teams
     vi.stubGlobal("fetch", fetchMock);
-    const c = new MattermostClient({ baseUrl: "https://x", username: "u", password: "p" });
+
+    const mintToken = vi.fn();
+    const c = new MattermostClient(cfg, {
+      mintToken,
+      loadToken: () => "stored-tok",
+      saveToken: vi.fn(),
+    });
 
     const teams = await c.get("/users/me/teams");
-    expect(teams).toEqual([{ id: "t1", name: "team" }]);
-
-    const loginCall = fetchMock.mock.calls[0];
-    expect(loginCall[0]).toBe("https://x/api/v4/users/login");
-    expect(JSON.parse(loginCall[1].body)).toEqual({ login_id: "u", password: "p" });
-
-    const getCall = fetchMock.mock.calls[1];
-    expect(getCall[1].headers["Authorization"]).toBe("Bearer tok-1");
+    expect(teams).toEqual([{ id: "t1" }]);
+    expect(mintToken).not.toHaveBeenCalled();
+    expect(c.userId).toBe("me1");
+    expect(fetchMock.mock.calls[1][1].headers["Authorization"]).toBe("Bearer stored-tok");
   });
 
-  it("re-logs in exactly once on 401 then retries", async () => {
+  it("mints and saves a token via SSO when no stored token", async () => {
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(res({ id: "me1" }, { headers: { Token: "tok-1" } })) // login
-      .mockResolvedValueOnce(res({ message: "expired" }, { status: 401 }))        // GET -> 401
-      .mockResolvedValueOnce(res({ id: "me1" }, { headers: { Token: "tok-2" } })) // re-login
-      .mockResolvedValueOnce(res({ ok: true }));                                  // retry GET
-
+      .mockResolvedValueOnce(res({ id: "me1" }))          // verify minted token
+      .mockResolvedValueOnce(res({ ok: true }));          // GET
     vi.stubGlobal("fetch", fetchMock);
-    const c = new MattermostClient({ baseUrl: "https://x", username: "u", password: "p" });
+
+    const saveToken = vi.fn();
+    const c = new MattermostClient(cfg, {
+      mintToken: vi.fn().mockResolvedValue("fresh-tok"),
+      loadToken: () => null,
+      saveToken,
+    });
+
+    await c.get("/anything");
+    expect(saveToken).toHaveBeenCalledWith("fresh-tok");
+    expect(fetchMock.mock.calls[1][1].headers["Authorization"]).toBe("Bearer fresh-tok");
+  });
+
+  it("re-mints exactly once on 401 then retries", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(res({ id: "me1" }))          // verify stored
+      .mockResolvedValueOnce(res({ message: "expired" }, { status: 401 })) // GET -> 401
+      .mockResolvedValueOnce(res({ id: "me1" }))          // verify minted
+      .mockResolvedValueOnce(res({ ok: true }));          // retry GET
+    vi.stubGlobal("fetch", fetchMock);
+
+    const mintToken = vi.fn().mockResolvedValue("new-tok");
+    const c = new MattermostClient(cfg, {
+      mintToken,
+      loadToken: () => "old-tok",
+      saveToken: vi.fn(),
+    });
 
     const out = await c.get("/anything");
     expect(out).toEqual({ ok: true });
-    expect(fetchMock).toHaveBeenCalledTimes(4);
-    expect(fetchMock.mock.calls[3][1].headers["Authorization"]).toBe("Bearer tok-2");
+    expect(mintToken).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[3][1].headers["Authorization"]).toBe("Bearer new-tok");
   });
 
-  it("throws a clear error when re-login still fails", async () => {
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(res({ id: "me1" }, { headers: { Token: "tok-1" } }))
-      .mockResolvedValueOnce(res({ message: "expired" }, { status: 401 }))
-      .mockResolvedValueOnce(res({ message: "bad creds" }, { status: 401 }));     // re-login fails
-
-    vi.stubGlobal("fetch", fetchMock);
-    const c = new MattermostClient({ baseUrl: "https://x", username: "u", password: "p" });
-
-    await expect(c.get("/anything")).rejects.toThrow(/đăng nhập thất bại/);
+  it("throws a clear error when SSO yields no token", async () => {
+    vi.stubGlobal("fetch", vi.fn());
+    const c = new MattermostClient(cfg, {
+      mintToken: vi.fn().mockResolvedValue(""),
+      loadToken: () => null,
+      saveToken: vi.fn(),
+    });
+    await expect(c.get("/anything")).rejects.toThrow(/đăng nhập/);
   });
 });
