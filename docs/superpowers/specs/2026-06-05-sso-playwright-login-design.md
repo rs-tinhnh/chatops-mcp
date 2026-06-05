@@ -42,9 +42,11 @@ every operation through the browser — slow and brittle.
 
 Flow:
 1. Launch Chromium headless (headful when `CHATOPS_HEADFUL=1`).
-2. `page.goto("https://chat.runsystem.vn/oauth/gitlab/login")`. Fallback: open
-   `/login` and click the GitLab SSO button if the direct OAuth URL doesn't
-   redirect.
+2. `page.goto("https://chat.runsystem.vn")` (the Mattermost login page) and
+   click the GitLab SSO button on it, following the real user flow. The button
+   is matched by visible text (e.g. `getByRole("link"/"button", { name: /gitlab/i })`)
+   with a fallback to the `/oauth/gitlab/login` href. This redirects to the
+   company GitLab login page.
 3. On the GitLab login page fill the email and password fields
    (`input#user_login`, `input#user_password`; fallback `getByLabel` /
    `input[type=email]` / `input[type=password]`) and submit.
