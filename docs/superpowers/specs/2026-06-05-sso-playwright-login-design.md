@@ -21,8 +21,13 @@ unchanged.
 ## Key facts (verified against the live server)
 
 - Real host: `chat.runsystem.vn` (`chatops.runsystem.vn` does not resolve).
-- SSO provider: GitLab OAuth (company GitLab). User logs in with company
-  email + password.
+- SSO provider: Mattermost labels it "gitlab", but `/oauth/gitlab/login`
+  302-redirects straight to **Keycloak** at
+  `https://sso.runsystem.vn/auth/realms/master/protocol/openid-connect/auth`
+  (client_id `chatops`). The username/password page is the Keycloak login form.
+  User logs in with company email/username + password. No intermediate
+  "Login with GitLab" button needs clicking — hitting the oauth URL lands
+  directly on the Keycloak form.
 - After a successful browser login, Mattermost sets the session token in the
   `MMAUTHTOKEN` cookie. That cookie value works directly as
   `Authorization: Bearer <token>` for `/api/v4`, so the rest of the client is
@@ -42,14 +47,14 @@ every operation through the browser — slow and brittle.
 
 Flow:
 1. Launch Chromium headless (headful when `CHATOPS_HEADFUL=1`).
-2. `page.goto("https://chat.runsystem.vn")` (the Mattermost login page) and
-   click the GitLab SSO button on it, following the real user flow. The button
-   is matched by visible text (e.g. `getByRole("link"/"button", { name: /gitlab/i })`)
-   with a fallback to the `/oauth/gitlab/login` href. This redirects to the
-   company GitLab login page.
-3. On the GitLab login page fill the email and password fields
-   (`input#user_login`, `input#user_password`; fallback `getByLabel` /
-   `input[type=email]` / `input[type=password]`) and submit.
+2. `page.goto("https://chat.runsystem.vn/oauth/gitlab/login")`. This 302s
+   directly to the Keycloak login form (no button to click).
+3. On the Keycloak login page fill the fields and submit. Selectors confirmed
+   against the live page:
+   - username: `#username` (fallback `input[name="username"]`)
+   - password: `#password` (fallback `input[name="password"]`)
+   - submit: `input.submit[type="submit"]` (fallback
+     `input[type="submit"][value="Sign in"]`)
 4. Wait for redirect back to `chat.runsystem.vn`.
 5. Read the `MMAUTHTOKEN` cookie from the browser context; that is the token.
 6. On failure (wrong creds, changed markup, timeout) throw a clear error that
