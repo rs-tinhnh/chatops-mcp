@@ -72,6 +72,32 @@ describe("MattermostClient", () => {
     expect(fetchMock.mock.calls[3][1].headers["Authorization"]).toBe("Bearer new-tok");
   });
 
+  it("mints when the stored token is no longer valid", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(res({ message: "expired" }, { status: 401 })) // verify stale -> false
+      .mockResolvedValueOnce(res({ id: "me1" }))                            // verify minted
+      .mockResolvedValueOnce(res({ ok: true }));                            // GET
+    vi.stubGlobal("fetch", fetchMock);
+    const saveToken = vi.fn();
+    const mintToken = vi.fn().mockResolvedValue("fresh-tok");
+    const c = new MattermostClient(cfg, { mintToken, loadToken: () => "stale-tok", saveToken });
+    const out = await c.get("/anything");
+    expect(out).toEqual({ ok: true });
+    expect(mintToken).toHaveBeenCalledTimes(1);
+    expect(saveToken).toHaveBeenCalledWith("fresh-tok");
+    expect(fetchMock.mock.calls[2][1].headers["Authorization"]).toBe("Bearer fresh-tok");
+  });
+
+  it("throws when a freshly minted token fails verification", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(res({ message: "no" }, { status: 401 })));
+    const c = new MattermostClient(cfg, {
+      mintToken: vi.fn().mockResolvedValue("bad-tok"),
+      loadToken: () => null,
+      saveToken: vi.fn(),
+    });
+    await expect(c.get("/anything")).rejects.toThrow(/token không hợp lệ/);
+  });
+
   it("throws a clear error when SSO yields no token", async () => {
     vi.stubGlobal("fetch", vi.fn());
     const c = new MattermostClient(cfg, {

@@ -60,6 +60,8 @@ export class MattermostClient {
   private async ensureLogin(force = false): Promise<void> {
     if (force) this.token = null;
     if (this.token) return;
+    // Assumes no concurrent forced + non-forced logins overlap (current callers
+    // are strictly sequential): a pending non-forced promise is reused as-is.
     if (!this.loginPromise) {
       this.loginPromise = this.login(force).finally(() => {
         this.loginPromise = null;
