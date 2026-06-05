@@ -7,6 +7,7 @@ MCP server để đọc và trả lời tin nhắn trên Mattermost (vd `chat.ru
 ```bash
 npm install
 npm run build
+npx playwright install chromium   # tải Chromium cho login SSO
 ```
 
 ## Cấu hình trong Claude (`.mcp.json` hoặc `claude_desktop_config.json`)
@@ -27,7 +28,14 @@ npm run build
 }
 ```
 
-Credential chỉ nằm trong env (không ghi ra disk, không log). Session token chỉ giữ trong RAM; tự login lại khi hết hạn.
+Login đi qua SSO Keycloak (`sso.runsystem.vn`): server mở Chromium (Playwright),
+điền `MATTERMOST_USERNAME`/`MATTERMOST_PASSWORD` vào form đăng nhập, rồi lấy
+session token. Env phụ: `CHATOPS_HEADFUL=1` để xem browser, `CHATOPS_LOGIN_TIMEOUT_MS`
+(mặc định 30000), `CHATOPS_SESSION_PATH` để đổi nơi lưu session.
+
+Credential chỉ nằm trong env (không log). Session token được lưu ra
+`~/.chatops-mcp/session.json` (quyền 600) và tái dùng tới khi hết hạn; khi gặp
+401 server tự đăng nhập SSO lại.
 
 ## Tool
 
