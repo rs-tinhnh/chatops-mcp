@@ -3,8 +3,12 @@
   "version": "0.1.0",
   "description": "MCP server to read and reply to Mattermost messages",
   "type": "module",
-  "bin": { "chatops-mcp": "dist/bin.js" },
-  "files": ["dist"],
+  "bin": {
+    "chatops-mcp": "dist/bin.js"
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/bin.ts",
@@ -20,6 +24,6 @@
     "@types/node": "^20.0.0",
     "tsx": "^4.0.0",
     "typescript": "^5.4.0",
-    "vitest": "^2.0.0"
+    "vitest": "^4.1.8"
   }
 }

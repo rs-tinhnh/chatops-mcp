@@ -10,23 +10,67 @@ npm run build
 npx playwright install chromium   # tải Chromium cho login SSO
 ```
 
-## Cấu hình trong Claude (`.mcp.json` hoặc `claude_desktop_config.json`)
+## Cấu hình
+
+### 1. Tạo `.env`
+
+Tạo file `.env` ở thư mục gốc project (đã nằm trong `.gitignore`, không commit):
+
+```bash
+MATTERMOST_URL="https://chat.runsystem.vn"
+MATTERMOST_USERNAME=your.username
+MATTERMOST_PASSWORD=your-password
+```
+
+`scripts/run-mcp.sh` sẽ load `.env` rồi chạy `dist/bin.js` — nhờ vậy credential
+chỉ nằm **một chỗ** (`.env`), không phải copy vào config của từng IDE. Cấp
+quyền chạy một lần:
+
+```bash
+chmod +x scripts/run-mcp.sh
+```
+
+### 2. Tích hợp vào Claude Code
+
+```bash
+claude mcp add chatops <đường-dẫn-tuyệt-đối>/chatops-mcp/scripts/run-mcp.sh
+```
+
+Hoặc khai báo thủ công trong `.mcp.json` / `~/.claude.json`:
 
 ```json
 {
   "mcpServers": {
     "chatops": {
-      "command": "node",
-      "args": ["<đường-dẫn-tuyệt-đối>/chatops-mcp/dist/bin.js"],
-      "env": {
-        "MATTERMOST_URL": "https://chat.runsystem.vn",
-        "MATTERMOST_USERNAME": "your.username",
-        "MATTERMOST_PASSWORD": "your-password"
-      }
+      "command": "<đường-dẫn-tuyệt-đối>/chatops-mcp/scripts/run-mcp.sh"
     }
   }
 }
 ```
+
+Kiểm tra bằng `claude mcp list` — `chatops` phải hiện `✓ Connected`.
+
+### 3. Tích hợp vào Cursor
+
+Thêm vào `.cursor/mcp.json` (theo project) hoặc `~/.cursor/mcp.json` (toàn cục):
+
+```json
+{
+  "mcpServers": {
+    "chatops": {
+      "command": "<đường-dẫn-tuyệt-đối>/chatops-mcp/scripts/run-mcp.sh"
+    }
+  }
+}
+```
+
+Mở lại Cursor (hoặc reload MCP trong Settings → MCP) để tool `chatops` xuất hiện.
+
+> Không muốn dùng `scripts/run-mcp.sh`? Có thể trỏ `command`/`args` thẳng vào
+> `node dist/bin.js` và truyền credential qua khối `env` trong config JSON ở
+> trên — nhưng khi đó mỗi IDE sẽ giữ một bản copy riêng của password.
+
+### Đăng nhập SSO & session
 
 Login đi qua SSO Keycloak (`sso.runsystem.vn`): server mở Chromium (Playwright),
 điền `MATTERMOST_USERNAME`/`MATTERMOST_PASSWORD` vào form đăng nhập, rồi lấy
